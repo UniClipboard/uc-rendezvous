@@ -1,0 +1,19 @@
+{
+  "name": "uc-rendezvous",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PAIRING_SESSION",
+        "class_name": "PairingSessionDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PairingSessionDO"]
+    }
+  ]
+}
