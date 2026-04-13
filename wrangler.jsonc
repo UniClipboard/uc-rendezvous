@@ -6,14 +6,21 @@
     "bindings": [
       {
         "name": "PAIRING_SESSION",
-        "class_name": "PairingSessionDO"
-      }
-    ]
+        "class_name": "PairingSessionDO",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["PairingSessionDO"]
-    }
-  ]
+      "new_sqlite_classes": ["PairingSessionDO"],
+    },
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+    "traces": {},
+  },
 }
