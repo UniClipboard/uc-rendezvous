@@ -4,6 +4,18 @@ export interface CreatePairingRequest {
   sponsorEndpointId: string;
   sponsorTicket: string;
   ttlSecs?: number;
+  /**
+   * Optional client-minted pairing code. When provided, the server stores
+   * the session under this code instead of generating one. Format must
+   * match the server alphabet (`XXXX-XXXX`, see `isValidProposedCode`).
+   *
+   * Enables LAN-only first pair: clients mint locally so pairing is not
+   * blocked by rendezvous reachability, while the cloud entry still acts
+   * as a cross-network index when WAN is available.
+   *
+   * Older clients that omit this field get the legacy server-mint flow.
+   */
+  proposedCode?: string;
 }
 
 export interface CreatePairingResponse {

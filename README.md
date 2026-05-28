@@ -44,9 +44,14 @@ Create a pairing session.
   "sponsorDeviceName": "Mark's MacBook Pro",
   "sponsorEndpointId": "ep_abc123",
   "sponsorTicket": "iroh-ticket-xxx",
-  "ttlSecs": 300
+  "ttlSecs": 300,
+  "proposedCode": "A7K3-P9Q2"
 }
 ```
+
+`proposedCode` is optional. When provided, the server stores the session under this code; when omitted, the server mints a fresh code (legacy behavior). The proposed value must match `^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$` (the same alphabet the server uses for minted codes — uppercase letters minus I/L/O and digits 2-9, in `XXXX-XXXX` shape). Malformed proposals return `400 invalid_proposed_code`. If a non-terminal session already exists for the proposed code, the request fails with `409 pairing_code_already_exists` — the existing session is never overwritten.
+
+This field exists so clients can pair on a LAN with no rendezvous reachability: the client mints the code locally, advertises it over LAN discovery, and uploads to rendezvous best-effort as a cross-network index. Older clients that omit `proposedCode` continue to work unchanged.
 
 Response:
 
