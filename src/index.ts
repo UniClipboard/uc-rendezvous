@@ -1,4 +1,4 @@
-import { generateCode } from "./lib/codes";
+import { generateCode, isValidProposedCode } from "./lib/codes";
 import { json, badRequest, notFound } from "./lib/json";
 import type { Env } from "./types/env";
 import type {
@@ -25,7 +25,16 @@ export default {
         return badRequest("invalid_request");
       }
 
-      const code = generateCode();
+      let code: string;
+      if (body.proposedCode !== undefined) {
+        if (!isValidProposedCode(body.proposedCode)) {
+          return badRequest("invalid_proposed_code");
+        }
+        code = body.proposedCode;
+      } else {
+        code = generateCode();
+      }
+
       const id = env.PAIRING_SESSION.idFromName(code);
       const stub = env.PAIRING_SESSION.get(id);
 
