@@ -61,7 +61,7 @@ Resolve with the returned code:
 ```bash
 curl -X POST https://your-service-url/v1/pairings/resolve \
   -H "content-type: application/json" \
-  -d '{ "code": "A7K3-P9Q2" }'
+  -d '{ "code": "1234-5678" }'
 ```
 
 Consume after pairing:
@@ -69,5 +69,5 @@ Consume after pairing:
 ```bash
 curl -X POST https://your-service-url/v1/pairings/consume \
   -H "content-type: application/json" \
-  -d '{ "code": "A7K3-P9Q2" }'
+  -d '{ "code": "1234-5678" }'
 ```
