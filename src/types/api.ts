@@ -4,16 +4,18 @@ export interface CreatePairingRequest {
   sponsorEndpointId: string;
   sponsorTicket: string;
   ttlSecs?: number;
+  /** Server-generated digit count; defaults to 8. Cannot accompany proposedCode. */
+  codeLength?: 6 | 8;
   /**
    * Optional client-minted pairing code. When provided, the server stores
-   * the session under this code instead of generating one. For compatibility,
-   * its format remains `XXXX-XXXX` (see `isValidProposedCode`).
+   * the session under this code instead of generating one. Accepts six digits
+   * in `XXX-XXX` shape or the legacy `XXXX-XXXX` format (see `isValidProposedCode`).
    *
    * Enables LAN-only first pair: clients mint locally so pairing is not
    * blocked by rendezvous reachability, while the cloud entry still acts
    * as a cross-network index when WAN is available.
    *
-   * Clients that omit this field get a server-minted `1234-5678` code.
+   * Clients that omit this field get a server-minted code (8 digits by default).
    */
   proposedCode?: string;
 }

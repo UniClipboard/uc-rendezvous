@@ -25,30 +25,41 @@ export default {
         return badRequest("invalid_request");
       }
 
-      let code: string;
+      if (body.codeLength !== undefined && body.codeLength !== 6 && body.codeLength !== 8) {
+        return badRequest("invalid_code_length");
+      }
+
       if (body.proposedCode !== undefined) {
+        if (body.codeLength !== undefined) {
+          return badRequest("conflicting_code_options");
+        }
         if (!isValidProposedCode(body.proposedCode)) {
           return badRequest("invalid_proposed_code");
         }
-        code = body.proposedCode;
-      } else {
-        code = generateCode();
       }
 
-      const id = env.PAIRING_SESSION.idFromName(code);
-      const stub = env.PAIRING_SESSION.get(id);
+      for (let attempt = 1; ; attempt++) {
+        const code = body.proposedCode ?? generateCode(body.codeLength);
+        const id = env.PAIRING_SESSION.idFromName(code);
+        const stub = env.PAIRING_SESSION.get(id);
 
-      return stub.fetch("https://do/internal/create", {
-        method: "POST",
-        body: JSON.stringify({
-          code,
-          sponsorDeviceId: body.sponsorDeviceId,
-          sponsorDeviceName: body.sponsorDeviceName,
-          sponsorEndpointId: body.sponsorEndpointId,
-          sponsorTicket: body.sponsorTicket,
-          ttlSecs: body.ttlSecs ?? 300,
-        }),
-      });
+        const response = await stub.fetch("https://do/internal/create", {
+          method: "POST",
+          body: JSON.stringify({
+            code,
+            sponsorDeviceId: body.sponsorDeviceId,
+            sponsorDeviceName: body.sponsorDeviceName,
+            sponsorEndpointId: body.sponsorEndpointId,
+            sponsorTicket: body.sponsorTicket,
+            ttlSecs: body.ttlSecs ?? 300,
+          }),
+        });
+
+        if (response.status !== 409 || body.proposedCode !== undefined || attempt === 5) {
+          return response;
+        }
+        await response.body?.cancel();
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/v1/pairings/resolve") {

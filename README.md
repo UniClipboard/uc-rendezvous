@@ -49,7 +49,30 @@ Create a pairing session.
 }
 ```
 
-`proposedCode` is optional. When omitted, the server mints an eight-digit numeric code in `1234-5678` shape. When provided, the server stores the session under the client-minted code instead; for compatibility, proposed values continue to match `^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$` (uppercase letters minus I/L/O and digits 2-9, in `XXXX-XXXX` shape). Malformed proposals return `400 invalid_proposed_code`. If a non-terminal session already exists for the proposed code, the request fails with `409 pairing_code_already_exists` — the existing session is never overwritten.
+`proposedCode` is optional. When omitted, the server mints an eight-digit numeric code in `1234-5678` shape by default. When provided, the server stores the session under the client-minted code instead. Accepted formats are six numeric digits in `XXX-XXX` shape (for example, `122-555` or `000-001`) and the existing `^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$` format (uppercase letters minus I/L/O and digits 2-9, in `XXXX-XXXX` shape). Malformed proposals return `400 invalid_proposed_code`. If a non-terminal session already exists for the proposed code, the request fails with `409 pairing_code_already_exists` — the existing session is never overwritten.
+
+For server-generated codes, pass the optional numeric `codeLength` field:
+
+- Omitted or `8`: returns eight digits in the existing `1234-5678` shape.
+- `6`: returns six digits in `123-456` shape.
+- Other values (including `null` or the string `"6"`): return `400 invalid_code_length`.
+- Combining `codeLength` with `proposedCode`: returns `400 conflicting_code_options`.
+
+For example, to request six digits:
+
+```json
+{
+  "sponsorDeviceId": "device-123",
+  "sponsorDeviceName": "Mark's MacBook Pro",
+  "sponsorEndpointId": "ep_abc123",
+  "sponsorTicket": "iroh-ticket-xxx",
+  "codeLength": 6
+}
+```
+
+Codes are strings and may start with zero. Automatically generated codes retry collisions up to five total attempts, then return `409 pairing_code_already_exists`. Client-provided codes are never replaced with a different code.
+
+To supply your own six-digit code, pass `"proposedCode": "122-555"` instead of `codeLength`. As with eight-digit codes, resolve and consume requests must use the complete code including the hyphen, for example `{ "code": "122-555" }`.
 
 This field exists so clients can pair on a LAN with no rendezvous reachability: the client mints the code locally, advertises it over LAN discovery, and uploads to rendezvous best-effort as a cross-network index. Older clients that omit `proposedCode` remain supported and receive a server-minted numeric code.
 
@@ -81,3 +104,7 @@ Mark a pairing code as consumed.
 ### `GET /healthz`
 
 Health check. Returns `{"ok": true}`.
+
+## Verification
+
+Run `npm run typecheck` and `npm test`. Tests cover request validation, deterministic collisions, and creation, resolution, and consumption against local Workers storage. They do not use production data.
