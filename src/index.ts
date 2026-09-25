@@ -1,6 +1,7 @@
 import { generateCode, isValidProposedCode } from "./lib/codes";
 import { json, badRequest, notFound } from "./lib/json";
 import type { Env } from "./types/env";
+import { webPairings } from "./web-pairings";
 import type {
   CreatePairingRequest,
   ResolvePairingRequest,
@@ -8,9 +9,12 @@ import type {
 } from "./types/api";
 
 export { PairingSessionDO } from "./durable/PairingSessionDO";
+export { WebPairingSessionDO } from "./durable/WebPairingSessionDO";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const webResponse = await webPairings(request, env);
+    if (webResponse) return webResponse;
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/v1/pairings") {

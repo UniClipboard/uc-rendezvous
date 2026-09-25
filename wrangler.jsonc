@@ -2,12 +2,19 @@
   "name": "uc-rendezvous",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-13",
+  "vars": { "WEB_PAIRING_ENV": "production" },
+  "ratelimits": [
+    { "name": "WEB_CREATE_LIMITER", "namespace_id": "231001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "WEB_RESOLVE_LIMITER", "namespace_id": "231002", "simple": { "limit": 20, "period": 60 } },
+    { "name": "WEB_CONSUME_LIMITER", "namespace_id": "231003", "simple": { "limit": 20, "period": 60 } },
+  ],
   "durable_objects": {
     "bindings": [
       {
         "name": "PAIRING_SESSION",
         "class_name": "PairingSessionDO",
       },
+      { "name": "WEB_PAIRING_SESSION", "class_name": "WebPairingSessionDO" },
     ],
   },
   "migrations": [
@@ -15,6 +22,7 @@
       "tag": "v1",
       "new_sqlite_classes": ["PairingSessionDO"],
     },
+    { "tag": "v2", "new_sqlite_classes": ["WebPairingSessionDO"] },
   ],
   "observability": {
     "logs": {
