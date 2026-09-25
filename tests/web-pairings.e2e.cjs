@@ -57,6 +57,7 @@ async function terminalTicketsRemoved(name) {
 async function request(worker, route, body, options = {}) {
   const response = await fetch(`http://127.0.0.1:${worker.port}${route}`, {
     method: options.method || 'POST',
+    ...(options.raw instanceof ReadableStream ? { duplex: 'half' } : {}),
     headers: { 'content-type': 'application/json', Origin: options.origin ?? origin,
       'CF-Connecting-IP': options.ip || ip(), ...options.headers },
     ...(options.method === 'OPTIONS' || options.method === 'GET' ? {} : {
@@ -132,6 +133,27 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
     for (const code of ['123456', '123 456', '１２３-４５６', '123-456\n', ' 123-456', 123456, null, 'web:123-456']) {
       for (const route of ['resolve', 'consume']) error(await request(worker, `${web}/${route}`, { code }), 400, 'invalid_request');
     }
+  });
+  await check('32 KiB raw JSON cap including chunked bodies and worst-case ticket escaping', async () => {
+    const padded = (body, size) => { const json = JSON.stringify(body); return json + ' '.repeat(size - Buffer.byteLength(json)); };
+    for (const suffix of ['', '/resolve', '/consume']) {
+      const body = suffix ? { code: saved.code } : { ticket: 'body-cap-test' };
+      error(await request(worker, web + suffix, null, { raw: padded(body, 32769) }), 400, 'invalid_request');
+      const text = padded(body, 32769);
+      const raw = new ReadableStream({ start(controller) {
+        for (let offset = 0; offset < text.length; offset += 8192) controller.enqueue(new TextEncoder().encode(text.slice(offset, offset + 8192)));
+        controller.close();
+      } });
+      error(await request(worker, web + suffix, null, { raw }), 400, 'invalid_request');
+    }
+    const made = await request(worker, web, null, { raw: padded({ ticket: 'exact-limit' }, 32768) });
+    assert.equal(made.status, 200);
+    for (const suffix of ['/resolve', '/consume']) assert.equal((await request(worker, web + suffix, null,
+      { raw: padded({ code: made.body.code }, 32768) })).status, 200);
+    const escaped = await request(worker, web, null, { raw: '{"ticket":"' + '\u0061'.repeat(4096) + '"}' });
+    assert.equal(escaped.status, 200);
+    assert.equal((await request(worker, web + '/resolve', { code: escaped.body.code })).body.ticket, 'a'.repeat(4096));
+    error(await request(worker, web, { ticket: 'ok', ignored: 'é'.repeat(16384) }), 400, 'invalid_request');
   });
   await check('CORS on success/errors/preflight; strict origin allow-list', async () => {
     for (const route of [web, `${web}/resolve`, `${web}/consume`]) {

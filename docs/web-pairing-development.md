@@ -256,3 +256,10 @@ The native record lifecycle is unchanged.
 The acceptance script's persisted-record checks use Node's built-in SQLite API
 (Node 22.13+; tested with 22.22.1) to inspect real local DO KV values after the
 runtime stops.
+
+All three web routes accept at most **32 KiB (32768 bytes) of raw JSON**. The
+body is read incrementally and cancelled when it exceeds the limit, including
+chunked requests. Oversized bodies return `400 invalid_request` with CORS and
+still count against the route's rate limit. This transport limit is separate
+from the decoded ticket's UTF-8 1–4096-byte limit; even a fully escaped maximum
+ticket fits. It was approved as a contract addition on 2026-09-25.

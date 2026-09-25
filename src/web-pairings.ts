@@ -34,6 +34,29 @@ function ttlSecs(env: Env): number {
   return ttl;
 }
 
+// Bound raw bytes before decoding/parsing, including requests without Content-Length.
+async function readJson(request: Request): Promise<unknown> {
+  if (!request.body) throw new Error("Missing JSON body");
+  const reader = request.body.getReader();
+  const bytes = new Uint8Array(32 * 1024);
+  let length = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value.byteLength > bytes.byteLength - length) {
+        await reader.cancel();
+        throw new Error("JSON body too large");
+      }
+      bytes.set(value, length);
+      length += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(new TextDecoder().decode(bytes.subarray(0, length)));
+}
+
 async function handle(request: Request, env: Env, operation: Operation): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: {
@@ -55,7 +78,7 @@ async function handle(request: Request, env: Env, operation: Operation): Promise
   });
 
   let body: unknown;
-  try { body = await request.json(); } catch { return badRequest("invalid_request"); }
+  try { body = await readJson(request); } catch { return badRequest("invalid_request"); }
   if (body === null || typeof body !== "object" || Array.isArray(body)) return badRequest("invalid_request");
   const fields = body as Record<string, unknown>;
 
