@@ -108,3 +108,10 @@ Health check. Returns `{"ok": true}`.
 ## Verification
 
 Run `npm run typecheck` and `npm test`. Tests cover request validation, deterministic collisions, and creation, resolution, and consumption against local Workers storage. They do not use production data.
+
+## Browser web pairings
+
+The separate `/v1/web-pairings` API supports opaque short-lived browser tickets.
+See [web pairing development and website integration](docs/web-pairing-development.md)
+for the contract, CORS, rate limits, local persistent Workers setup, curl examples,
+quick expiry, and real HTTP/browser acceptance. Native routes above are unchanged.
