@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:web": "node tests/web-pairings.e2e.cjs",
+    "dev:web": "wrangler dev --local --ip 127.0.0.1 --inspector-port 0 --var WEB_PAIRING_ENV:development",
     "test": "node --test tests/*.test.cjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -10,6 +12,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250410.0",
+    "playwright": "^1.63.0",
     "typescript": "^5.8.3",
     "wrangler": "^4.14.0"
   }
