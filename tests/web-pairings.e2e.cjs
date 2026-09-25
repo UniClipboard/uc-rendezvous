@@ -8,6 +8,9 @@ const ts = require('typescript');
 const { unstable_dev } = require('wrangler');
 const { chromium } = require('playwright');
 
+const { DatabaseSync } = require('node:sqlite');
+const { deserialize } = require('node:v8');
+
 const root = path.resolve(__dirname, '..');
 const dir = path.join(root, '.wrangler', 'web-pairing-e2e', new Date().toISOString().replaceAll(':', '-'));
 const origin = 'http://localhost:43123';
@@ -31,6 +34,26 @@ async function start(name, vars = {}, overrides = {}) {
   return worker;
 }
 async function stop(worker) { await worker.stop(); running.delete(worker); }
+async function terminalTicketsRemoved(name) {
+  const storage = path.join(dir, `${name}-state/v3/do/web-e2e-${name}-WebPairingSessionDO`);
+  let terminal = 0;
+  for (const file of await fs.readdir(storage)) {
+    if (!file.endsWith('.sqlite')) continue;
+    const db = new DatabaseSync(path.join(storage, file), { readOnly: true });
+    try {
+      if (!db.prepare("SELECT name FROM sqlite_master WHERE name = '_cf_KV'").get()) continue;
+      for (const row of db.prepare('SELECT value FROM _cf_KV WHERE key = ?').all('session')) {
+        const record = deserialize(row.value);
+        if (record.status === 'consumed' || record.status === 'expired') {
+          terminal++;
+          assert.equal(record.sponsorTicket, '', 'terminal web record must not retain its ticket');
+        }
+      }
+    } finally { db.close(); }
+  }
+  assert.ok(terminal > 0, 'must inspect at least one terminal record');
+}
+
 async function request(worker, route, body, options = {}) {
   const response = await fetch(`http://127.0.0.1:${worker.port}${route}`, {
     method: options.method || 'POST',
@@ -91,7 +114,7 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
     }
   });
   await check('SQLite state survives real runtime restart', async () => {
-    await stop(worker); worker = await start('development', { WEB_PAIRING_ENV: 'development' });
+    await stop(worker); await terminalTicketsRemoved('development'); worker = await start('development', { WEB_PAIRING_ENV: 'development' });
     const result = await request(worker, `${web}/resolve`, { code: saved.code });
     assert.deepEqual(result.body, { ticket: saved.ticket, expiresAtMs: saved.expiresAtMs });
   });
@@ -180,6 +203,7 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
       const b = await request(fast, web, { ticket: 'replacement-test' });
       assert.equal(b.status, 200); assert.ok(b.body.expiresAtMs > a.body.expiresAtMs);
     } finally { await stop(fast); }
+    await terminalTicketsRemoved('expiry');
   });
   for (const mode of ['production', 'typo', undefined]) await check(`${mode ?? 'unset'} environment: localhost denied, short TTL ignored`, async () => {
     const prod = await start(`guard-${mode || 'unset'}`, { ...(mode ? { WEB_PAIRING_ENV: mode } : {}), WEB_PAIRING_TTL_SECS: '1' });

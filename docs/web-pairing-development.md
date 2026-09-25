@@ -236,3 +236,23 @@ IDs are not used by unrelated Workers. No account state was queried or changed
 for local development. Do not use `--remote`, remote bindings or a deployment
 command when following this guide. A deployment would also need independent
 production browser/CORS and edge-limit verification.
+
+## Production migrations
+
+A new Durable Object class requires an ordinary `npm run deploy` deployment
+from the reviewed, merged source. Cloudflare `wrangler versions upload` cannot
+apply a pending DO migration and fails with API error 10211. Do not remove the
+migration or switch PR preview builds to production deploy to silence that check.
+After the migration is applied, subsequent version uploads can use the existing
+migration tag. Verify the deployed version, migration tag, both distinct DO
+namespace IDs, and all three rate-limit bindings before enabling the website.
+
+Web terminal records retain status/timestamps for the existing error semantics,
+but clear their opaque ticket in the same storage write on consume or expiry
+(including lazy expiry and alarm expiry). This is logical removal from the active
+record, not a claim of secure erasure from provider backups or SQLite history.
+The native record lifecycle is unchanged.
+
+The acceptance script's persisted-record checks use Node's built-in SQLite API
+(Node 22.13+; tested with 22.22.1) to inspect real local DO KV values after the
+runtime stops.

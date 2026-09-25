@@ -51,7 +51,7 @@ export class PairingSessionDO extends DurableObject<Env> {
       expiresAtMs,
     };
 
-    await this.ctx.storage.put("session", record);
+    await this.storeSession(record);
     await this.ctx.storage.setAlarm(expiresAtMs);
 
     return json({
@@ -67,7 +67,7 @@ export class PairingSessionDO extends DurableObject<Env> {
     const now = Date.now();
     if (now >= record.expiresAtMs || record.status === "expired") {
       record.status = "expired";
-      await this.ctx.storage.put("session", record);
+      await this.storeSession(record);
       return notFound("pairing_expired");
     }
 
@@ -78,7 +78,7 @@ export class PairingSessionDO extends DurableObject<Env> {
     if (record.status === "pending") {
       record.status = "resolved";
       record.resolvedAtMs = now;
-      await this.ctx.storage.put("session", record);
+      await this.storeSession(record);
     }
 
     return json({
@@ -99,7 +99,7 @@ export class PairingSessionDO extends DurableObject<Env> {
     const now = Date.now();
     if (now >= record.expiresAtMs || record.status === "expired") {
       record.status = "expired";
-      await this.ctx.storage.put("session", record);
+      await this.storeSession(record);
       return notFound("pairing_expired");
     }
 
@@ -109,9 +109,13 @@ export class PairingSessionDO extends DurableObject<Env> {
 
     record.status = "consumed";
     record.consumedAtMs = now;
-    await this.ctx.storage.put("session", record);
+    await this.storeSession(record);
 
     return json({ ok: true });
+  }
+
+  protected async storeSession(record: PairingSessionRecord): Promise<void> {
+    await this.ctx.storage.put("session", record);
   }
 
   async alarm(): Promise<void> {
@@ -120,7 +124,7 @@ export class PairingSessionDO extends DurableObject<Env> {
 
     if (Date.now() >= record.expiresAtMs && record.status !== "consumed") {
       record.status = "expired";
-      await this.ctx.storage.put("session", record);
+      await this.storeSession(record);
     }
   }
 }
