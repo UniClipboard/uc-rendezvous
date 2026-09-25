@@ -14,6 +14,8 @@ const { deserialize } = require('node:v8');
 const root = path.resolve(__dirname, '..');
 const dir = path.join(root, '.wrangler', 'web-pairing-e2e', new Date().toISOString().replaceAll(':', '-'));
 const origin = 'http://localhost:43123';
+const productionOrigins = ['https://try.uniclipboard.app', 'https://uniclipboard.app', 'https://www.uniclipboard.app'];
+const deniedOrigins = ['https://evil.example', 'https://try.uniclipboard.app.evil', 'http://try.uniclipboard.app', 'http://localhost:3000', 'null'];
 const records = [];
 const checks = [];
 const running = new Set();
@@ -67,7 +69,7 @@ async function request(worker, route, body, options = {}) {
   const text = await response.text();
   const result = { status: response.status, headers: Object.fromEntries(response.headers),
     body: text ? JSON.parse(text) : null };
-  records.push({ route, method: options.method || 'POST', ...result });
+  records.push({ origin: options.origin ?? origin, route, method: options.method || 'POST', ...result });
   if (route.startsWith('/v1/web-pairings')) {
     assert.equal(result.headers.vary, 'Origin');
     assert.equal(result.headers['access-control-allow-credentials'], undefined);
@@ -87,6 +89,73 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
 (async () => {
   await fs.mkdir(dir, { recursive: true });
   config = ts.parseConfigFileTextToJson('wrangler.jsonc', await fs.readFile(path.join(root, 'wrangler.jsonc'), 'utf8')).config;
+  await check('production origin matrix: lifecycle, errors and preflight on all web routes', async () => {
+    const prod = await start('cors-production', { WEB_PAIRING_ENV: 'production' });
+    try {
+      for (const allowed of [...productionOrigins, ...deniedOrigins]) {
+        const options = { origin: allowed, cors: productionOrigins.includes(allowed) };
+        for (const route of [web, `${web}/resolve`, `${web}/consume`]) {
+          const preflight = await request(prod, route, null, { ...options, method: 'OPTIONS', headers: {
+            'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } });
+          assert.equal(preflight.status, 204);
+          assert.equal(preflight.headers['access-control-allow-methods'], 'POST, OPTIONS');
+          assert.equal(preflight.headers['access-control-allow-headers'], 'content-type');
+          assert.equal(preflight.headers['access-control-max-age'], '86400');
+          error(await request(prod, route, {}, options), 400, 'invalid_request');
+          assert.equal((await request(prod, route, null, { ...options, method: 'GET' })).status, 405);
+        }
+        const made = await request(prod, web, { ticket: 'origin-matrix' }, options);
+        assert.equal(made.status, 200);
+        assert.deepEqual(Object.keys(made.body).sort(), ['code', 'expiresAtMs']);
+        assert.ok(made.body.expiresAtMs - Date.now() > 295000);
+        const body = { code: made.body.code };
+        assert.deepEqual((await request(prod, `${web}/resolve`, body, options)).body,
+          { ticket: 'origin-matrix', expiresAtMs: made.body.expiresAtMs });
+        assert.deepEqual((await request(prod, `${web}/consume`, body, options)).body, { ok: true });
+        for (const suffix of ['/resolve', '/consume']) {
+          error(await request(prod, web + suffix, body, options), 409, 'pairing_already_consumed');
+          error(await request(prod, web + suffix, { code: '999-999' }, options), 404, 'pairing_not_found');
+        }
+      }
+      const browser = await chromium.launch({ headless: true });
+      const browserResults = [];
+      try {
+        for (const pageOrigin of [...productionOrigins, 'https://evil.example', 'http://localhost:3000']) {
+          // Permit the local test transport only; normal CORS remains enabled.
+          const context = await browser.newContext({ permissions: ['local-network-access'] });
+          try {
+            // Only the static document is supplied locally; API requests and CORS
+            // enforcement use the browser network stack and the real local Worker.
+            await context.route(pageOrigin + '/', route => route.fulfill({ contentType: 'text/html',
+              body: '<title>Production origin acceptance</title><pre id="results"></pre>' }));
+            const page = await context.newPage();
+            page.on('console', message => records.push({ browserOrigin: pageOrigin, console: message.text() }));
+            await page.goto(pageOrigin + '/');
+            const result = await page.evaluate(async base => {
+              const call = async (suffix, body) => {
+                try {
+                  const r = await fetch(base + '/v1/web-pairings' + suffix, { method: 'POST', credentials: 'omit',
+                    headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+                  return { status: r.status, body: await r.json() };
+                } catch (e) { return { blocked: e.name }; }
+              };
+              const made = await call('', { ticket: 'production-browser' });
+              const body = { code: made.body?.code ?? '123-456' };
+              return [made, await call('/resolve', body), await call('/consume', body), await call('/resolve', body)];
+            }, `http://localhost:${prod.port}`);
+            browserResults.push({ origin: pageOrigin, result });
+            await fs.writeFile(path.join(dir, 'production-browser.json'), JSON.stringify(browserResults, null, 2));
+            if (productionOrigins.includes(pageOrigin)) {
+              assert.deepEqual(result.map(r => r.status), [200, 200, 200, 409]);
+              assert.equal(result[1].body.ticket, 'production-browser');
+            } else assert.ok(result.every(r => r.blocked === 'TypeError'));
+            await page.evaluate(data => { document.querySelector('#results').textContent = JSON.stringify(data, null, 2); }, { origin: pageOrigin, result });
+            await page.screenshot({ path: path.join(dir, `origin-${new URL(pageOrigin).hostname}.png`) });
+          } finally { await context.close(); }
+        }
+      } finally { await browser.close(); }
+    } finally { await stop(prod); }
+  });
   let worker = await start('development', { WEB_PAIRING_ENV: 'development' });
   let saved;
   await check('lifecycle, repeated resolve, namespace isolation and concurrent consume', async () => {
@@ -165,7 +234,7 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
       assert.equal(r.headers['access-control-max-age'], '86400');
       assert.equal((await request(worker, route, null, { method: 'GET' })).status, 405);
     }
-    for (const allowed of ['https://uniclipboard.app', 'https://www.uniclipboard.app', 'http://localhost:65535', 'http://localhost']) {
+    for (const allowed of [...productionOrigins, 'http://localhost:65535', 'http://localhost']) {
       error(await request(worker, web, {}, { origin: allowed }), 400, 'invalid_request');
     }
     for (const denied of ['null', 'http://127.0.0.1:3000', 'https://localhost:3000', 'http://localhost.evil:3000', 'https://uniclipboard.app.evil', 'http://localhost:3000/path']) {
@@ -177,17 +246,17 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
     if (Date.now() % 60000 > 50000) await delay(60050 - Date.now() % 60000);
     const client = '198.51.100.1';
     for (const [route, limit] of [[web, 10], [`${web}/resolve`, 20], [`${web}/consume`, 20]]) {
-      for (let i = 0; i < limit; i++) error(await request(worker, route, {}, { ip: client }), 400, 'invalid_request');
-      const blocked = await request(worker, route, {}, { ip: client });
+      for (let i = 0; i < limit; i++) error(await request(worker, route, {}, { ip: client, origin: productionOrigins[0] }), 400, 'invalid_request');
+      const blocked = await request(worker, route, {}, { ip: client, origin: productionOrigins[0] });
       error(blocked, 429, 'rate_limited'); assert.equal(blocked.headers['retry-after'], '60');
-      assert.equal((await request(worker, route, null, { ip: client, method: 'OPTIONS' })).status, 204);
+      assert.equal((await request(worker, route, null, { ip: client, origin: productionOrigins[0], method: 'OPTIONS' })).status, 204);
       error(await request(worker, route, {}, { ip: '198.51.100.2' }), 400, 'invalid_request');
     }
     // Native traffic does not use web quotas.
-    assert.equal((await request(worker, native, { ...nativeBody(undefined), codeLength: 6 }, { ip: client })).status, 200);
+    assert.equal((await request(worker, native, { ...nativeBody(undefined), codeLength: 6 }, { ip: client, origin: productionOrigins[0] })).status, 200);
     console.log('Waiting for the local binding minute window to reset...');
     await delay(60050 - Date.now() % 60000);
-    for (const route of [web, `${web}/resolve`, `${web}/consume`]) error(await request(worker, route, {}, { ip: client }), 400, 'invalid_request');
+    for (const route of [web, `${web}/resolve`, `${web}/consume`]) error(await request(worker, route, {}, { ip: client, origin: productionOrigins[0] }), 400, 'invalid_request');
   });
   await check('real browser cross-origin fetch from a static localhost page', async () => {
     const server = http.createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end('<title>Web pairing CORS acceptance</title><p>Local static page</p>'); });
@@ -236,11 +305,14 @@ async function check(name, run) { await run(); checks.push(name); console.log(`P
     } finally { await stop(prod); }
   });
   await check('caught service faults retain JSON and CORS, no limiter bypass', async () => {
-    const broken = await start('missing-binding', { WEB_PAIRING_ENV: 'development' }, { ratelimits: [] });
+    const broken = await start('missing-binding', { WEB_PAIRING_ENV: 'production' }, { ratelimits: [] });
     try {
       for (const route of [web, `${web}/resolve`, `${web}/consume`]) {
-        const r = await request(broken, route, { ticket: 'fault-test', code: '123-456' });
-        assert.equal(r.status, 503); assert.equal(typeof r.body.error.code, 'string');
+        for (const allowed of [...productionOrigins, ...deniedOrigins]) {
+          const r = await request(broken, route, { ticket: 'fault-test', code: '123-456' },
+            { origin: allowed, cors: productionOrigins.includes(allowed) });
+          error(r, 503, 'service_unavailable');
+        }
       }
     } finally { await stop(broken); }
   });

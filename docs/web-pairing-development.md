@@ -39,10 +39,12 @@ Errors have shape `{"error":{"code":"..."}}`:
 
 Every application response, including failures, has `Vary: Origin`,
 `Cache-Control: no-store`, and `Access-Control-Allow-Origin` for an allowed
-origin only. Production permits exactly `https://www.uniclipboard.app` and
-`https://uniclipboard.app`. No credentials/cookies are enabled. Preflight on
-these exact routes returns 204, allows `POST, OPTIONS` and `content-type`, and
-sets `Access-Control-Max-Age: 86400`. Disallowed origins receive no allow-origin
+origin only. Production permits exactly `https://try.uniclipboard.app`,
+`https://www.uniclipboard.app` and `https://uniclipboard.app`. The two website
+origins remain for compatibility. Deploy backend support for the try origin
+before switching website traffic to it. No credentials/cookies are enabled.
+Preflight on these exact routes returns 204, allows `POST, OPTIONS` and
+`content-type`, and sets `Access-Control-Max-Age: 86400`. Disallowed origins receive no allow-origin
 header; CORS is not authentication. Infrastructure failures before the Worker
 runs cannot be decorated by application code.
 
@@ -206,10 +208,15 @@ storage and the packaged rate-limit bindings, restarts the runtime to verify
 persistence, and opens a separate headless Chromium to a tiny static localhost
 page. It never uses an external target or an existing website process. It also
 starts a local misconfigured instance without rate bindings to test 503 JSON and
-CORS; no product fault injection switch exists.
+CORS; no product fault injection switch exists. The production-mode origin
+matrix covers all three allowed HTTPS origins, invalid origins and denied
+localhost. Chromium receives local static documents at those origins and calls
+the real local Worker; only local-network permission is granted, with normal
+CORS enforcement. This does not validate public DNS, TLS or website deployment.
 
-It saves `assertions.json`, `browser.json`, `browser.png`, runtime configuration
-and persistent state under `.wrangler/web-pairing-e2e/<timestamp>/`. Instances
+It saves `assertions.json`, `browser.json`, `browser.png`, `production-browser.json`,
+`origin-*.png`, runtime configuration and persistent state under
+`.wrangler/web-pairing-e2e/<timestamp>/`. Instances
 started by the test stop at the end; artifacts/state remain. The handoff service
 has a different state directory and is not stopped. Failure hypotheses are
 covered by lifecycle, concurrent consume, byte/format boundaries, namespace

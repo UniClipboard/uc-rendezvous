@@ -17,7 +17,7 @@ function cors(response: Response, request: Request, env: Env): Response {
   headers.set("Cache-Control", "no-store");
   const localhost = env.WEB_PAIRING_ENV === "development" && origin !== null &&
     /^http:\/\/localhost(?::[0-9]+)?$/.test(origin) && validOrigin(origin);
-  if (origin === "https://www.uniclipboard.app" || origin === "https://uniclipboard.app" || localhost) {
+  if (origin === "https://try.uniclipboard.app" || origin === "https://www.uniclipboard.app" || origin === "https://uniclipboard.app" || localhost) {
     headers.set("Access-Control-Allow-Origin", origin!);
   }
   return new Response(response.body, { status: response.status, headers });
